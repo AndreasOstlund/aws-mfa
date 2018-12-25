@@ -287,3 +287,9 @@ $> aws s3 list-objects —bucket my-production-bucket —profile myorganization-
 
 $> aws s3 list-objects —bucket my-staging-bucket —profile myorganization-staging
 ```
+=================================================================================================
+## Local build
+```
+python ./setup.py sdist
+pip install -e ./
+```
