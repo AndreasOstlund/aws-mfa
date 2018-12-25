@@ -281,16 +281,45 @@ def get_credentials(short_term_name, lt_key_id, lt_access_key, args, config):
         logger.debug("Received token as argument")
         mfa_token = '%s' % (args.token)
     else:
+        '''
         console_input = prompter()
         mfa_token = console_input('Enter AWS MFA code for device [%s] '
                                   '(renewing for %s seconds):' %
                                   (args.device, args.duration))
+        '''
+        mfa_token = 123456
 
     client = boto3.client(
         'sts',
         aws_access_key_id=lt_key_id,
         aws_secret_access_key=lt_access_key
     )
+
+
+    logger.info("Fetching Credentials - Profile: %s, Duration: %s",
+                short_term_name, args.duration)
+    try:
+        response = client.get_session_token(
+            DurationSeconds=args.duration,
+            SerialNumber=args.device,
+            TokenCode=mfa_token
+        )
+    except ClientError as e:
+        log_error_and_exit(
+            logger,
+            "An error occured while calling assume role: {}".format(e))
+    except ParamValidationError as e:
+        log_error_and_exit(
+            logger,
+            "Token must be six digits. ({})".format(e))
+
+    config.set(
+        short_term_name,
+        'assumed_role',
+        'False',
+    )
+    config.remove_option(short_term_name, 'assumed_role_arn')
+
 
     if args.assume_role:
 
@@ -301,13 +330,23 @@ def get_credentials(short_term_name, lt_key_id, lt_access_key, args, config):
                                "via --role-session-name")
 
         try:
+            credentials=response['Credentials']
+            client = boto3.client(
+                'sts',
+                aws_access_key_id=credentials['AccessKeyId'],
+                aws_secret_access_key=credentials['SecretAccessKey'],
+                aws_session_token=credentials['SessionToken']
+            )
+
             response = client.assume_role(
                 RoleArn=args.assume_role,
                 RoleSessionName=args.role_session_name,
-                DurationSeconds=args.duration,
-                SerialNumber=args.device,
-                TokenCode=mfa_token
+                DurationSeconds=args.duration
             )
+
+                #SerialNumber=args.device,
+                #TokenCode=mfa_token
+
         except ClientError as e:
             log_error_and_exit(logger,
                                "An error occured while calling "
@@ -325,30 +364,8 @@ def get_credentials(short_term_name, lt_key_id, lt_access_key, args, config):
             'assumed_role_arn',
             args.assume_role,
         )
-    else:
-        logger.info("Fetching Credentials - Profile: %s, Duration: %s",
-                    short_term_name, args.duration)
-        try:
-            response = client.get_session_token(
-                DurationSeconds=args.duration,
-                SerialNumber=args.device,
-                TokenCode=mfa_token
-            )
-        except ClientError as e:
-            log_error_and_exit(
-                logger,
-                "An error occured while calling assume role: {}".format(e))
-        except ParamValidationError:
-            log_error_and_exit(
-                logger,
-                "Token must be six digits")
 
-        config.set(
-            short_term_name,
-            'assumed_role',
-            'False',
-        )
-        config.remove_option(short_term_name, 'assumed_role_arn')
+
 
     # aws_session_token and aws_security_token are both added
     # to support boto and boto3
