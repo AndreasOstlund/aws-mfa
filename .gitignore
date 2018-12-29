@@ -19,3 +19,4 @@ var/
 .installed.cfg
 *.egg
 .vscode
+.DS_Store
